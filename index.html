@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D HTML Game</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+        }
+
+        canvas {
+            border: 1px solid black;
+            background-color: lightgreen;
+            margin-bottom: 20px;
+            width: 800px;
+            height: 600px;
+        }
+
+        #controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <div id="controls">
+        <button id="leftButton">Left</button>
+        <button id="rightButton">Right</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // --- Game Variables ---
+        const playerWidth = 60;
+        const playerHeight = 80;
+        let playerX = canvas.width / 2 - playerWidth / 2;
+        let playerY = canvas.height - playerHeight - 20;
+        const playerSpeed = 7;
+        let leftPressed = false;
+        let rightPressed = false;
+
+        const obstacleWidth = 60;
+        const obstacleHeight = 80;
+        let obstacles = [];
+        const obstacleSpeed = 4;
+        let score = 0;
+        let gameActive = true;
+
+        // Game Time
+        const gameDuration = 60 * 60 * 1000; // 1 hour in milliseconds
+        let startTime;
+        let timeLeft;
+
+        // Road Texture
+        const roadTexture = new Image();
+        roadTexture.src = "https://sun9-45.userapi.com/impf/c628316/v628316758/20dfa/AG6WBiuP4r0.jpg?size=604x604&quality=96&sign=883cdddbb3b2088a516b1162b5519673&c_uniq_tag=TU87Y0NDB0EY89BmIZp87ATjH4g5tG9NR9kSzU57eb8&type=album";
+        let isRoadTextureLoaded = false;
+        roadTexture.onload = () => {
+            isRoadTextureLoaded = true;
+        };
+
+
+        // --- Game Objects ---
+        class GameObject {
+            constructor(x, y, width, height, color, imageSrc = null) {
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+                this.color = color;
+                this.image = null;
+                this.isImageLoaded = false;
+
+                if (imageSrc) {
+                    this.image = new Image();
+                    this.image.src = imageSrc;
+                    this.image.onload = () => {
+                        this.isImageLoaded = true;
+                    };
+                }
+            }
+
+            draw(ctx) {
+                if (this.image && this.isImageLoaded) {
+                    ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+                } else {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
+            }
+
+
+            collidesWith(other) {
+                const collisionBuffer = 0.2;
+                const thisCollisionWidth = this.width * (1 - collisionBuffer);
+                const thisCollisionHeight = this.height * (1 - collisionBuffer);
+                const otherCollisionWidth = other.width * (1 - collisionBuffer);
+                const otherCollisionHeight = other.height * (1 - collisionBuffer);
+
+                const thisCollisionXOffset = this.width * collisionBuffer / 2;
+                const thisCollisionYOffset = this.height * collisionBuffer / 2;
+                const otherCollisionXOffset = other.width * collisionBuffer / 2;
+                const otherCollisionYOffset = other.height * collisionBuffer / 2;
+
+
+                return !(
+                    this.x + thisCollisionWidth  + thisCollisionXOffset < other.x + otherCollisionXOffset ||
+                    this.x + thisCollisionXOffset > other.x + otherCollisionWidth + otherCollisionXOffset ||
+                    this.y + thisCollisionHeight + thisCollisionYOffset < other.y + otherCollisionYOffset ||
+                    this.y + thisCollisionYOffset > other.y + otherCollisionHeight + otherCollisionYOffset
+                );
+            }
+        }
+
+        const player = new GameObject(playerX, playerY, playerWidth, playerHeight, 'blue', "https://i.postimg.cc/7YLh810w/Background-Eraser-20250309-194840265.png");
+
+        function createObstacle() {
+            const obstacleX = Math.random() * (canvas.width - obstacleWidth);
+            const obstacle = new GameObject(obstacleX, -obstacleHeight, obstacleWidth, obstacleHeight, 'red', "https://i.postimg.cc/05V5f633/Background-Eraser-20250309-194803846.png");
+            obstacles.push(obstacle);
+        }
+
+        function updateObstacles() {
+            if (!gameActive) return;
+
+            for (let i = 0; i < obstacles.length; i++) {
+                obstacles[i].y += obstacleSpeed;
+
+                if (player.collidesWith(obstacles[i])) {
+                    gameOver();
+                    return;
+                }
+
+                if (obstacles[i].y > canvas.height) {
+                    obstacles.splice(i, 1);
+                    i--;
+                    score++;
+                }
+            }
+
+            // Increased probability of obstacle creation - from 0.015 to 0.03
+            if (Math.random() < 0.03 && gameActive) { // Increased probability for more traffic
+                createObstacle();
+            }
+        }
+
+
+        // --- Input Handlers ---
+        function keyDownHandler(e) {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft' || e.key === 'KeyA') {
+                leftPressed = true;
+            } else if (e.key === 'ArrowRight' || e.key === 'KeyD') {
+                rightPressed = true;
+            }
+        }
+
+        function keyUpHandler(e) {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft' || e.key === 'KeyA') {
+                leftPressed = false;
+            } else if (e.key === 'ArrowRight' || e.key === 'KeyD') {
+                rightPressed = false;
+            }
+        }
+
+        document.addEventListener('keydown', keyDownHandler, false);
+        document.addEventListener('keyup', keyUpHandler, false);
+
+        // Button Input Handlers
+        const leftButton = document.getElementById('leftButton');
+        const rightButton = document.getElementById('rightButton');
+
+        leftButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            leftPressed = true;
+        });
+        leftButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            leftPressed = false;
+        });
+        leftButton.addEventListener('mousedown', () => leftPressed = true);
+        leftButton.addEventListener('mouseup', () => leftPressed = false);
+        leftButton.addEventListener('mouseleave', () => leftPressed = false);
+
+
+        rightButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            rightPressed = true;
+        });
+        rightButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            rightPressed = false;
+        });
+        rightButton.addEventListener('mousedown', () => rightPressed = true);
+        rightButton.addEventListener('mouseup', () => rightPressed = false);
+        rightButton.addEventListener('mouseleave', () => rightPressed = false);
+
+
+        // --- Game Over and Reset ---
+        function gameOver() {
+            gameActive = false;
+            alert("Game Over! You crashed into an obstacle! Your score: " + score);
+            resetGame();
+        }
+
+        function timeIsUp() {
+            gameActive = false;
+            alert("Time's up! Your final score: " + score);
+            resetGame();
+        }
+
+        function resetGame() {
+            gameActive = true;
+            score = 0;
+            obstacles = [];
+            playerX = canvas.width / 2 - playerWidth / 2;
+            playerY = canvas.height - playerHeight - 20;
+            startTime = Date.now();
+            if (!animationFrameId) {
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // --- Draw Function ---
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Road Texture as Background
+            if (isRoadTextureLoaded) {
+                ctx.drawImage(roadTexture, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = 'lightgreen';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+
+            // Draw Score
+            ctx.fillStyle = 'black';
+            ctx.font = "20px Arial";
+            ctx.fillText("Score: " + score, 10, 25);
+
+            // Draw Time Left
+            const elapsedTime = Date.now() - startTime;
+            timeLeft = Math.max(0, gameDuration - elapsedTime);
+            const minutesLeft = Math.floor(timeLeft / (60 * 1000));
+            const secondsLeft = Math.floor((timeLeft % (60 * 1000)) / 1000);
+            const timeLeftString = `Time Left: ${minutesLeft}:${secondsLeft.toString().padStart(2, '0')}`;
+            ctx.fillText(timeLeftString, 10, 50);
+
+
+            player.draw(ctx);
+
+            for (let i = 0; i < obstacles.length; i++) {
+                obstacles[i].draw(ctx);
+            }
+        }
+
+
+        // --- Game Loop ---
+        let animationFrameId;
+        function gameLoop() {
+            if (!gameActive) return;
+
+            updateObstacles();
+
+            // Player movement
+            if (rightPressed && player.x < canvas.width - player.width) {
+                player.x += playerSpeed;
+            } else if (leftPressed && player.x > 0) {
+                player.x -= playerSpeed;
+            }
+
+            // Check for Time Up
+            if (timeLeft <= 0) {
+                timeIsUp();
+                return;
+            }
+
+
+            draw();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // --- Start Game ---
+        resetGame();
+
+    </script>
+</body>
+</html>
